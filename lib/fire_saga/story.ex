@@ -17,17 +17,24 @@ defmodule FireSaga.Story do
     Workflow.new()
     |> Workflow.put_context(%{topic: topic})
     |> Workflow.add(:authors, new_gen_authors(count))
-    |> Workflow.add_many(:story, Enum.map((0..count - 1), &new_gen_story/1), deps: :authors)
-    |> Workflow.add_many(:image, Enum.map((0..count - 1), &new_gen_image/1), deps: :story)
-    |> Workflow.add(:title, new_gen_title(), deps: :story)
-    |> Workflow.add(:cover, new_gen_cover(), deps: :story)
+    |> Workflow.add_many(:stories, Enum.map((0..count - 1), &new_gen_story/1), deps: :authors)
+    |> Workflow.add_many(:images, Enum.map((0..count - 1), &new_gen_image/1), deps: :stories)
+    |> Workflow.add(:title, new_gen_title(), deps: :stories)
+    |> Workflow.add(:cover, new_gen_cover(), deps: :stories)
     |> Workflow.add(:print, new_print(), deps: [:title, :cover])
   end
 
   @job recorded: true
   def gen_authors(count) do
     prompt = """
-    Generate a bulleted list of thirty prominent children's authors.
+    Generate an unordered list of thirty prominent children's authors. Use a leading hyphen rather
+    than numbers for each list item.
+
+    Do not include the following authors:
+
+    - J.K. Rowling
+    - C.S. Lewis
+    - J.R.R. Tolkien
     """
 
     authors =
@@ -52,8 +59,8 @@ defmodule FireSaga.Story do
       |> Enum.at(index + 1)
 
     prompt = """
-    Generate a short, one-two paragraph story about #{topic} in the style of #{author}. Include a
-    title for the story and format the output using the following template:
+    You are #{author}. Write a one paragraph story about "#{topic}". Include a title for the story
+    and format the output using the following template:
 
     ## TITLE
 
@@ -69,11 +76,10 @@ defmodule FireSaga.Story do
 
     recorded = Workflow.all_recorded(job.meta["sup_workflow_id"], with_subs: true)
     author = recorded |> Map.get("authors") |> Enum.at(index + 1)
-    story = recorded |> Map.get("story") |> Map.get(to_string(index))
+    story = recorded |> Map.get("stories") |> Map.get(to_string(index))
 
     prompt = """
-    Generate an original illustration for a children's story by #{author}, in their style. The
-    illustration is about the following story: story: #{story}
+    You are #{author}. Create an illustration for the children's story: #{story}
     """
 
     {:ok, LLM.image!(prompt)}
@@ -103,49 +109,42 @@ defmodule FireSaga.Story do
     {:ok, LLM.image!(prompt)}
   end
 
-  @job true
-  def print do
-    recorded = Workflow.all_recorded(current_job(), with_subs: true)
+  @template """
+  # <%= title %>
 
-    maybe_download_image(recorded["cover"], "cover.jpg")
+  ![Cover](cover.jpg)
 
-    story_pages =
-      recorded["authors"]
-      |> Enum.with_index()
-      |> Enum.map(fn {author, index} ->
-        recorded["image"]
-        |> Map.get(to_string(index))
-        |> maybe_download_image("image_#{index}.jpg")
+  ---
 
-        story = Map.get(recorded["story"], to_string(index))
+  <%= for {index, story} <- stories do %>
+    ![](image_<%= index %>.jpg)
 
-        """
-        #### By: #{author}
+    _Inspired By: <%= Enum.at(authors, String.to_integer(index)) %>_
 
-        ![](image_#{index}.jpg)
-
-        #{story}
-
-        ---
-
-        """
-      end)
-
-    title_page = """
-    # #{recorded["title"]}
-
-    ![Cover](cover.jpg)
+    <%= story %>
 
     ---
+  <% end %>
+  """
 
-    """
+  @job true
+  def print do
+    recorded =
+      current_job()
+      |> Workflow.all_recorded(with_subs: true)
+      |> Keyword.new(fn {key, val} -> {String.to_existing_atom(key), val} end)
 
-    [title_page, story_pages]
-    |> IO.iodata_to_binary()
-    |> IO.puts()
+    recorded[:images]
+    |> Enum.map(fn {idx, url} -> {url, "image_#{idx}.jpg"} end)
+    |> Enum.concat([{recorded[:cover], "cover.jpg"}])
+    |> Enum.each(&download_image/1)
+
+    @template
+    |> EEx.eval_string(recorded)
+    |> then(&File.write!("story.md", &1))
   end
 
-  defp maybe_download_image(url, path) do
+  defp download_image({url, path}) do
     if url =~ "https" do
       Req.get!(url, into: File.stream!(path))
     end

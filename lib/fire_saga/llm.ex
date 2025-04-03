@@ -12,7 +12,7 @@ defmodule FireSaga.LLM do
     body = %{model: "dall-e-3", prompt: prompt}
 
     case post(json: body, url: "https://api.openai.com/v1/images/generations") do
-      {:ok, %{body: body}} -> get_in(body, ["data", Access.at(0), "url"])
+      {:ok, %{body: body, status: 200}} -> get_in(body, ["data", Access.at(0), "url"])
       error -> raise error
     end
   end

@@ -13,8 +13,6 @@ defmodule FireSagaTest do
   end
 
   test "generating a complete story" do
-    id = Oban.Pro.UUIDv7.generate()
-
     expect_chat("- Beverly Cleary\n- Jean Craighead George\n- Alexander Key", 1)
     expect_chat("A little story, here it goes", 3)
     expect_image("image.jpg", 3)
@@ -22,9 +20,17 @@ defmodule FireSagaTest do
     expect_image("cover.jpg", 1)
 
     assert %{completed: 11} =
-             [topic: "Story about things", chapters: 3]
+             [topic: "Bento box lunches", chapters: 3]
              |> Story.build()
-             |> run_workflow(workflow_id: id)
+             |> run_workflow()
+
+    file = File.read!("story.md")
+
+    assert file =~ "# Collection of Stories"
+    assert file =~ "_Inspired By: Beverly Cleary_"
+    assert file =~ "(image_0.jpg)"
+  after
+    File.rm("story.md")
   end
 
   defp expect_chat(content, count) do
