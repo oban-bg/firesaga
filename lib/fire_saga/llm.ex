@@ -9,7 +9,7 @@ defmodule FireSaga.LLM do
   end
 
   def image!(prompt) do
-    body = %{model: "dall-e-3", prompt: prompt}
+    body = %{model: "dall-e-3", prompt: prompt, size: "1024x1024"}
 
     case post(json: body, url: "https://api.openai.com/v1/images/generations") do
       {:ok, %{body: body, status: 200}} -> get_in(body, ["data", Access.at(0), "url"])

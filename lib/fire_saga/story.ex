@@ -13,19 +13,19 @@ defmodule FireSaga.Story do
   def build(opts) when is_list(opts) do
     topic = Keyword.fetch!(opts, :topic)
     count = Keyword.fetch!(opts, :chapters)
+    range = 0..(count - 1)
 
     Workflow.new()
-    |> Workflow.put_context(%{topic: topic})
-    |> Workflow.add(:authors, new_gen_authors(count))
-    |> Workflow.add_many(:stories, Enum.map((0..count - 1), &new_gen_story/1), deps: :authors)
-    |> Workflow.add_many(:images, Enum.map((0..count - 1), &new_gen_image/1), deps: :stories)
-    |> Workflow.add(:title, new_gen_title(), deps: :stories)
-    |> Workflow.add(:cover, new_gen_cover(), deps: :stories)
-    |> Workflow.add(:print, new_print(), deps: [:title, :cover])
+    |> Workflow.put_context(%{count: count, topic: topic})
+    |> Workflow.add_cascade(:authors, &gen_authors/1)
+    |> Workflow.add_cascade(:stories, {range, &gen_story/2}, deps: :authors)
+    |> Workflow.add_cascade(:images, {range, &gen_image/2}, deps: ~w(authors stories))
+    |> Workflow.add_cascade(:title, &gen_title/1, deps: :stories)
+    |> Workflow.add_cascade(:cover, &gen_cover/1, deps: :stories)
+    |> Workflow.add_cascade(:print, &print/1, deps: ~w(authors cover images stories title))
   end
 
-  @job recorded: true
-  def gen_authors(count) do
+  def gen_authors(%{count: count}) do
     prompt = """
     Generate an unordered list of thirty prominent children's authors. Use a leading hyphen rather
     than numbers for each list item.
@@ -37,87 +37,53 @@ defmodule FireSaga.Story do
     - J.R.R. Tolkien
     """
 
-    authors =
-      prompt
-      |> LLM.chat!()
-      |> String.split("\n", trim: true)
-      |> Enum.map(&String.trim_leading(&1, "- "))
-      |> Enum.take_random(count)
-
-    {:ok, authors}
+    prompt
+    |> LLM.chat!()
+    |> String.split("\n", trim: true)
+    |> Enum.map(&String.trim_leading(&1, "- "))
+    |> Enum.take_random(count)
   end
 
-  @job recorded: true
-  def gen_story(index) do
-    workflow_id = current_job().meta["sup_workflow_id"]
+  def gen_story(index, %{authors: authors, topic: topic}) do
+    author = Enum.at(authors, index)
 
-    %{topic: topic} = Workflow.get_context(workflow_id)
-
-    author =
-      workflow_id
-      |> Workflow.get_recorded(:authors)
-      |> Enum.at(index + 1)
-
-    prompt = """
-    You are #{author}. Write a one paragraph story about "#{topic}". Include a title for the story
-    and format the output using the following template:
-
-    ## TITLE
-
-    STORY
-    """
-
-    {:ok, LLM.chat!(prompt)}
+    LLM.chat!("""
+    You are #{author}. Write a one paragraph story about "#{topic}" including a title.
+    """)
   end
 
-  @job recorded: true
-  def gen_image(index) do
-    job = current_job()
+  def gen_image(index, %{authors: authors, stories: stories}) do
+    author = Enum.at(authors, index)
+    story = Map.get(stories, to_string(index))
 
-    recorded = Workflow.all_recorded(job.meta["sup_workflow_id"], with_subs: true)
-    author = recorded |> Map.get("authors") |> Enum.at(index + 1)
-    story = recorded |> Map.get("stories") |> Map.get(to_string(index))
-
-    prompt = """
+    LLM.image!("""
     You are #{author}. Create an illustration for the children's story: #{story}
-    """
-
-    {:ok, LLM.image!(prompt)}
+    """)
   end
 
-  @job recorded: true
-  def gen_title do
-    %{topic: topic} = Workflow.get_context(current_job())
-
-    prompt = """
+  def gen_title(%{topic: topic}) do
+    LLM.chat!("""
     Create a title for a collection of children's stories about #{topic}. The title should be
     brief, playful, and possibly funny.
-    """
-
-    {:ok, LLM.chat!(prompt)}
+    """)
   end
 
-  @job recorded: true
-  def gen_cover do
-    %{topic: topic} = Workflow.get_context(current_job())
-
-    prompt = """
+  def gen_cover(%{topic: topic}) do
+    LLM.image!("""
     Illustrate an original cover for a collection of children's stories about #{topic}. Don't
     include any text.
-    """
-
-    {:ok, LLM.image!(prompt)}
+    """)
   end
 
   @template """
   # <%= title %>
 
-  ![Cover](cover.jpg)
+  ![Cover](cover.png)
 
   ---
 
   <%= for {index, story} <- stories do %>
-    ![](image_<%= index %>.jpg)
+    ![](image_<%= index %>.png)
 
     _Inspired By: <%= Enum.at(authors, String.to_integer(index)) %>_
 
@@ -127,20 +93,14 @@ defmodule FireSaga.Story do
   <% end %>
   """
 
-  @job true
-  def print do
-    recorded =
-      current_job()
-      |> Workflow.all_recorded(with_subs: true)
-      |> Keyword.new(fn {key, val} -> {String.to_existing_atom(key), val} end)
-
-    recorded[:images]
-    |> Enum.map(fn {idx, url} -> {url, "image_#{idx}.jpg"} end)
-    |> Enum.concat([{recorded[:cover], "cover.jpg"}])
+  def print(context) do
+    context.images
+    |> Enum.map(fn {idx, url} -> {url, "image_#{idx}.png"} end)
+    |> Enum.concat([{context.cover, "cover.png"}])
     |> Enum.each(&download_image/1)
 
     @template
-    |> EEx.eval_string(recorded)
+    |> EEx.eval_string(Keyword.new(context))
     |> then(&File.write!("story.md", &1))
   end
 

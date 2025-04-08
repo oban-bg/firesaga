@@ -15,9 +15,9 @@ defmodule FireSagaTest do
   test "generating a complete story" do
     expect_chat("- Beverly Cleary\n- Jean Craighead George\n- Alexander Key", 1)
     expect_chat("A little story, here it goes", 3)
-    expect_image("image.jpg", 3)
+    expect_image("image.png", 3)
     expect_chat("Collection of Stories", 1)
-    expect_image("cover.jpg", 1)
+    expect_image("cover.png", 1)
 
     assert %{completed: 11} =
              [topic: "Bento box lunches", chapters: 3]
@@ -28,7 +28,7 @@ defmodule FireSagaTest do
 
     assert file =~ "# Collection of Stories"
     assert file =~ "_Inspired By: Beverly Cleary_"
-    assert file =~ "(image_0.jpg)"
+    assert file =~ "(image_0.png)"
   after
     File.rm("story.md")
   end
