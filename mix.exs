@@ -24,7 +24,7 @@ defmodule FireSaga.MixProject do
       {:plug, "~> 1.17"},
       {:postgrex, "~> 0.20"},
       {:oban, "~> 2.19"},
-      {:oban_pro, "~> 1.6.0-rc.1", repo: :oban, path: "../oban_pro"},
+      {:oban_pro, "~> 1.6.0-rc.3", repo: :oban},
       {:req, "~> 0.5"},
     ]
   end

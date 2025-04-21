@@ -1,21 +1,36 @@
 # FireSaga
 
-**TODO: Add description**
+Fire Saga is a workflow that generates a collection of children's stories based on a topic using
+generative AI. The authors are selected at random, then a short children's story and an
+illustration are generated for each author before it's all packaged together with cover art in a
+tidy markdown file.
 
-## Installation
+## Usage
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `fire_saga` to your list of dependencies in `mix.exs`:
+_🌟 You'll need an active Oban Pro license and OpenAI keys to run the demo_
 
-```elixir
-def deps do
-  [
-    {:fire_saga, "~> 0.1.0"}
-  ]
-end
+Clone the repository, then install the dependencies:
+
+```bash
+mix deps.get
 ```
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at <https://hexdocs.pm/fire_saga>.
+Create the database and run the migrations:
 
+```bash
+mix run ecto.create,ecto.migrate
+```
+
+Run the tests to make sure everything installed:
+
+```bash
+mix test
+```
+
+Now you can generate a story. Start an `iex` session, then start a workflow:
+
+```iex
+FireSaga.Story.insert(chapters: 3, topic: "whatever silly topic you want")
+```
+
+Wait a moment and it will spit out the markdown for a collection of stories with images.
