@@ -2,7 +2,7 @@ defmodule FireSaga.LLM do
   def chat!(prompt) do
     body = %{model: "gpt-4o-mini", messages: [%{role: "user", content: prompt}]}
 
-    case post(json: body, url: "https://api.openai.com/v1/chat/completions") do
+    case post(json: body, url: Application.fetch_env!(:fire_saga, :openai_ttt)) do
       {:ok, %{body: body}} -> get_in(body, ["choices", Access.at(0), "message", "content"])
       error -> raise error
     end
@@ -11,7 +11,7 @@ defmodule FireSaga.LLM do
   def image!(prompt) do
     body = %{model: "dall-e-3", prompt: prompt, size: "1024x1024"}
 
-    case post(json: body, url: "https://api.openai.com/v1/images/generations") do
+    case post(json: body, url: Application.fetch_env!(:fire_saga, :openai_tti)) do
       {:ok, %{body: body, status: 200}} -> get_in(body, ["data", Access.at(0), "url"])
       error -> raise error
     end
